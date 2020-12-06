@@ -13,6 +13,8 @@ from rlpyt.utils.collections import namedarraytuple
 from rlpyt.utils.tensor import valid_mean
 from rlpyt.algos.utils import valid_from_done
 
+from rlpyt.algos.qpg.preqn_optim import PreqnOptim
+
 OptInfo = namedtuple("OptInfo",
     ["muLoss", "qLoss", "muGradNorm", "qGradNorm"])
 SamplesToBuffer = namedarraytuple("SamplesToBuffer",
@@ -37,7 +39,7 @@ class PreQN(RlAlgorithm):
             policy_update_interval=1,
             learning_rate=1e-4,
             q_learning_rate=1e-3,
-            OptimCls=torch.optim.Adam,
+            OptimCls=PreqnOptim,
             optim_kwargs=None,
             initial_optim_state_dict=None,
             clip_grad_norm=1e8,
