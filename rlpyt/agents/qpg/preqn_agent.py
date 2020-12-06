@@ -16,7 +16,7 @@ from rlpyt.utils.collections import namedarraytuple
 AgentInfo = namedarraytuple("AgentInfo", ["mu"])
 
 
-class DdpgAgent(BaseAgent):
+class PreqnAgent(BaseAgent):
     """Agent for deep deterministic policy gradient algorithm."""
 
     shared_mu_model = None
