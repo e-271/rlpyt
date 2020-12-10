@@ -194,7 +194,7 @@ class PreQN(RlAlgorithm):
             #    if len(p.shape) == 2: print(p[0,:10])
 
             opt_info.qLoss.append(q_loss.item())
-            #opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
+            opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
             self.update_counter += 1
             if self.update_counter % self.policy_update_interval == 0:
                 self.mu_optimizer.zero_grad()
@@ -231,7 +231,7 @@ class PreQN(RlAlgorithm):
         samples have leading batch dimension [B,..] (but not time)."""
         q = self.agent.q(*samples.agent_inputs, samples.action)
         with torch.no_grad():
-            target_q = self.agent.target_q_at_mu(*samples.target_inputs)
+            target_q = self.agent.q_at_mu(*samples.target_inputs)
         disc = self.discount ** self.n_step_return
         y = samples.return_ + (1 - samples.done_n.float()) * disc * target_q
         y = torch.clamp(y, -self.q_target_clip, self.q_target_clip)
