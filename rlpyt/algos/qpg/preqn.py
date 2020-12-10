@@ -12,8 +12,8 @@ from rlpyt.replays.non_sequence.time_limit import (TlUniformReplayBuffer,
 from rlpyt.utils.collections import namedarraytuple
 from rlpyt.utils.tensor import valid_mean
 from rlpyt.algos.utils import valid_from_done
+import scipy.linalg
 
-from rlpyt.algos.qpg.preqn_optim import PreqnOptim
 
 OptInfo = namedtuple("OptInfo",
     ["muLoss", "qLoss", "muGradNorm", "qGradNorm"])
@@ -38,8 +38,8 @@ class PreQN(RlAlgorithm):
             target_update_interval=1,
             policy_update_interval=1,
             learning_rate=1e-4,
-            q_learning_rate=1e-3,
-            OptimCls=PreqnOptim,
+            q_learning_rate=5e-5,
+            OptimCls=torch.optim.Adam,
             optim_kwargs=None,
             initial_optim_state_dict=None,
             clip_grad_norm=1e8,
@@ -95,7 +95,7 @@ class PreQN(RlAlgorithm):
         self.rank = rank
         self.mu_optimizer = self.OptimCls(self.agent.mu_parameters(),
             lr=self.learning_rate, **self.optim_kwargs)
-        self.q_optimizer = self.OptimCls(self.agent.q_parameters(),
+        self.q_optimizer = torch.optim.SGD(self.agent.q_parameters(),
             lr=self.q_learning_rate, **self.optim_kwargs)
         if self.initial_optim_state_dict is not None:
             self.q_optimizer.load_state_dict(self.initial_optim_state_dict["q"])
@@ -155,13 +155,46 @@ class PreQN(RlAlgorithm):
                 # time-limit, turn off training on these samples.
                 valid *= (1 - samples_from_replay.timeout_n.float())
             self.q_optimizer.zero_grad()
-            q_loss = self.q_loss(samples_from_replay, valid)
-            q_loss.backward()
+            q, target_q, td, q_loss = self.q_loss(samples_from_replay, valid)
+
+            # Compute K and Z
+            d_q = []
+            for b in range(q.shape[0]):
+                q[b].backward(retain_graph=True)
+                d_q.append(torch.Tensor())
+                for p in self.agent.q_parameters():
+                    d_q[b] = torch.cat([d_q[b], p.grad.view(-1)])
+                self.q_optimizer.zero_grad()
+            with torch.no_grad():
+                d_q = torch.stack(d_q, dim=1)
+                K = torch.matmul(d_q.T, d_q)
+                try: 
+                    Z, _ = torch.lstsq(td, K)
+                except: 
+                    # Remove this after PyTorch fix of lstsq for rank-deficient matrices
+                    # https://github.com/pytorch/pytorch/issues/44378
+                    Z, _, _, _ = scipy.linalg.lstsq(K, td)
+                    Z = torch.Tensor(Z)
+
+            # Compute PreQN gradient Z \del Q
+            #(td.detach().clone() * q).sum().backward()
+            (Z * q).sum().backward()
             q_grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.agent.q_parameters(), self.clip_grad_norm)
-            self.q_optimizer.step()
+
+            # Do gradient descent
+            #self.q_optimizer.step()
+            with torch.no_grad():
+                for p in self.agent.q_parameters():
+                    d_p = p.grad
+                    p.add_(d_p, alpha=self.q_learning_rate)
+
+            # Debugs print
+            #for p in self.agent.q_parameters():
+            #    if len(p.shape) == 2: print(p[0,:10])
+
             opt_info.qLoss.append(q_loss.item())
-            opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
+            #opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
             self.update_counter += 1
             if self.update_counter % self.policy_update_interval == 0:
                 self.mu_optimizer.zero_grad()
@@ -198,13 +231,14 @@ class PreQN(RlAlgorithm):
         samples have leading batch dimension [B,..] (but not time)."""
         q = self.agent.q(*samples.agent_inputs, samples.action)
         with torch.no_grad():
-            target_q = self.agent.q_at_mu(*samples.target_inputs)
+            target_q = self.agent.target_q_at_mu(*samples.target_inputs)
         disc = self.discount ** self.n_step_return
         y = samples.return_ + (1 - samples.done_n.float()) * disc * target_q
         y = torch.clamp(y, -self.q_target_clip, self.q_target_clip)
-        q_losses = 0.5 * (y - q) ** 2
+        td = y - q
+        q_losses = 0.5 * td ** 2
         q_loss = valid_mean(q_losses, valid)  # valid can be None.
-        return q_loss
+        return q, target_q, td, q_loss
 
     def optim_state_dict(self):
         return dict(q=self.q_optimizer.state_dict(),
