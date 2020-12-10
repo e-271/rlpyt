@@ -19,9 +19,11 @@ from rlpyt.agents.qpg.ddpg_agent import DdpgAgent
 from rlpyt.agents.qpg.preqn_agent import PreqnAgent
 from rlpyt.runners.minibatch_rl import MinibatchRlEval
 from rlpyt.utils.logging.context import logger_context
+from rlpyt.utils.seed import set_seed
 
 
-def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None):
+def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None, seed=42):
+    set_seed(seed)
     sampler = SerialSampler(
         EnvCls=gym_make,
         env_kwargs=dict(id=env_id),
@@ -43,6 +45,7 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
         algo=algo,
         agent=agent,
         sampler=sampler,
+        seed=seed,
         n_steps=1e6,
         log_interval_steps=1e4,
         affinity=dict(cuda_idx=cuda_idx),
