@@ -10,13 +10,13 @@ from rlpyt.replays.non_sequence.uniform import (UniformReplayBuffer,
 from rlpyt.replays.non_sequence.time_limit import (TlUniformReplayBuffer,
     AsyncTlUniformReplayBuffer)
 from rlpyt.utils.collections import namedarraytuple
-from rlpyt.utils.tensor import valid_mean
+from rlpyt.utils.tensor import valid_mean, valid_sum
 from rlpyt.algos.utils import valid_from_done
 import scipy.linalg
-
+import numpy as np
 
 OptInfo = namedtuple("OptInfo",
-    ["muLoss", "qLoss", "muGradNorm", "qGradNorm"])
+    ["muLoss", "qLoss", "qMean", "cosSim", "muGradNorm", "qGradNorm"])
 SamplesToBuffer = namedarraytuple("SamplesToBuffer",
     ["observation", "action", "reward", "done", "timeout"])
 
@@ -156,6 +156,7 @@ class PreQN(RlAlgorithm):
                 valid *= (1 - samples_from_replay.timeout_n.float())
             self.q_optimizer.zero_grad()
             q, target_q, td, q_loss = self.q_loss(samples_from_replay, valid)
+            opt_info.qMean.append(q.mean())
 
             # Compute K and Z
             d_q = []
@@ -175,23 +176,44 @@ class PreQN(RlAlgorithm):
                     # https://github.com/pytorch/pytorch/issues/44378
                     Z, _, _, _ = scipy.linalg.lstsq(K, td)
                     Z = torch.Tensor(Z)
-
+                Z = Z.view(-1)
+            
             # Compute PreQN gradient Z \del Q
-            #(td.detach().clone() * q).sum().backward()
-            (Z * q).sum().backward()
+            valid_sum(Z *-q, valid).backward()
             q_grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.agent.q_parameters(), self.clip_grad_norm)
 
-            # Do gradient descent
-            #self.q_optimizer.step()
+            # Update parameters
             with torch.no_grad():
-                for p in self.agent.q_parameters():
+                old_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
+                old_parameters = [p.clone() for p in self.agent.q_parameters()]
+                for p in self.agent.q_model.parameters():
                     d_p = p.grad
-                    p.add_(d_p, alpha=self.q_learning_rate)
+                    p.add_(d_p, alpha=-self.q_learning_rate)
+                new_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
+                
+                # DEBUG STUFF
+                """import pdb; pdb.set_trace()
+                dt = old_parameters[0] + self.q_learning_rate * torch.matmul(d_q, Z)
+                assert p[0,0].item() == dt[0,0].item()
+                assert new_q[0].item() == torch.matmul(d_q.T, dt.T).item()
+                z_q = old_q + self.q_learning_rate * torch.matmul(K, Z)
+                # TODO i am not totally convinced this makes sense still
+                td_q = old_q + self.q_learning_rate * td / self.batch_size
+                assert td_q[0].item() == z_q[0].item() # This should be small difference due to appx Z
+                assert z_q[0].item() == new_q[0].item()"""
 
-            # Debugs print
-            #for p in self.agent.q_parameters():
-            #    if len(p.shape) == 2: print(p[0,:10])
+                # Reject updates with high-order Taylor approximation terms
+                cos = torch.dot(new_q - old_q, td) / (torch.norm(new_q - old_q) * torch.norm(td))
+                opt_info.cosSim.append(cos.item())
+
+                # Only accept update if Q' - Q is well aligned with TQ - Q (measured by cosine similarity)
+                """for alpha in range(4):
+                    for p, old_p in zip(self.agent.q_parameters(), old_parameters):
+                        p = np.exp(-alpha) * p + (1 - np.exp(-alpha)) * old_p
+                    new_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
+                    cos = torch.dot(new_q - old_q, td) / (torch.norm(new_q - old_q) * torch.norm(td))
+                    if cos > 0.95: break"""
 
             opt_info.qLoss.append(q_loss.item())
             opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible

@@ -34,9 +34,9 @@ class PreqnAgent(BaseAgent):
             ):
         """Saves input arguments; default network sizes saved here."""
         if model_kwargs is None:
-            model_kwargs = dict(hidden_sizes=[400, 300])
+            model_kwargs = dict(hidden_sizes=[64, 64])
         if q_model_kwargs is None:
-            q_model_kwargs = dict(hidden_sizes=[400, 300])
+            q_model_kwargs = dict(hidden_sizes=[])
         save__init__args(locals())
         super().__init__()  # For async setup.
 

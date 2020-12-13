@@ -31,7 +31,7 @@ class MlpModel(torch.nn.Module):
             sequence.extend([layer, nonlinearity()])
         if output_size is not None:
             last_size = hidden_sizes[-1] if hidden_sizes else input_size
-            sequence.append(torch.nn.Linear(last_size, output_size))
+            sequence.append(torch.nn.Linear(last_size, output_size, bias=False))
         self.model = torch.nn.Sequential(*sequence)
         self._output_size = (hidden_sizes[-1] if output_size is None
             else output_size)

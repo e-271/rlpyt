@@ -46,6 +46,16 @@ def valid_mean(tensor, valid=None, dim=None):
     return (tensor * valid).sum(dim=dim) / valid.sum(dim=dim)
 
 
+def valid_sum(tensor, valid=None, dim=None):
+    """Sum of ``tensor``, accounting for optional mask ``valid``,
+    optionally along a dimension."""
+    dim = () if dim is None else dim
+    if valid is None:
+        return tensor.sum(dim=dim)
+    valid = valid.type(tensor.dtype)  # Convert as needed.
+    return (tensor * valid).sum(dim=dim)
+
+
 def infer_leading_dims(tensor, dim):
     """Looks for up to two leading dimensions in ``tensor``, before
     the data dimensions, of which there are assumed to be ``dim`` number.
