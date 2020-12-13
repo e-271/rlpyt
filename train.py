@@ -24,7 +24,7 @@ from rlpyt.utils.seed import set_seed
 import torch
 
 
-def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None, seed=42, q_hidden_sizes=[400,300], q_nonlinearity='relu', batch_size=64, q_target=None):
+def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None, seed=42, q_hidden_sizes=[64,64], q_nonlinearity='relu', batch_size=32, q_target=None, log_freq=1e3):
     set_seed(seed)
     sampler = SerialSampler(
         EnvCls=gym_make,
@@ -43,13 +43,15 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
     if alg_name.lower() == 'ddpg':
         if q_target is None: q_target = True
         algo = DDPG(batch_size=batch_size,
-                    target=q_target)
+                    target=q_target, 
+                    min_steps_learn=log_freq)
         agent = DdpgAgent(q_hidden_sizes=q_hidden_sizes, 
                            q_nonlinearity=q_nonlin)
     elif alg_name.lower() == 'preqn':
         if q_target is None: q_target = False
         algo = PreQN(batch_size=batch_size,
-                    target=q_target)
+                    target=q_target, 
+                    min_steps_learn=log_freq)
         agent = PreqnAgent(q_hidden_sizes=q_hidden_sizes, 
                            q_nonlinearity=q_nonlin)
     runner = MinibatchRlEval(
@@ -58,7 +60,7 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
         sampler=sampler,
         seed=seed,
         n_steps=1e6,
-        log_interval_steps=1e4,
+        log_interval_steps=log_freq, #1e4,
         affinity=dict(cuda_idx=cuda_idx),
     )
     config = dict(env_id=env_id)
@@ -82,9 +84,9 @@ if __name__ == "__main__":
     parser.add_argument('--log_dir', help='log directory', default='/mnt/slow_ssd/erobb/rlclass')
     parser.add_argument('--run_ID', help='run ID (logging)', type=int, default=0)
     parser.add_argument('--cuda_idx', help='gpu to use ', type=int, default=None)
-    parser.add_argument('--qhsize', type=int, nargs='+', default=[400,300])
+    parser.add_argument('--qhsize', type=int, nargs='+', default=[64,64])
     parser.add_argument('--qnonlin', type=str, default='relu')
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--qtarget', type=bool, default=None)
     args = parser.parse_args()
     build_and_train(

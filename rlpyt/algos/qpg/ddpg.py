@@ -29,7 +29,7 @@ class DDPG(RlAlgorithm):
             self,
             discount=0.99,
             batch_size=64,
-            min_steps_learn=int(1e4),
+            min_steps_learn=int(1e3),
             replay_size=int(1e6),
             replay_ratio=64,  # data_consumption / data_generation
             target_update_tau=0.01,

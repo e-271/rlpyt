@@ -31,7 +31,7 @@ class PreQN(RlAlgorithm):
             self,
             discount=0.99,
             batch_size=64,
-            min_steps_learn=int(1e4),
+            min_steps_learn=int(1e3),
             replay_size=int(1e6),
             replay_ratio=64,  # data_consumption / data_generation
             target_update_tau=0.01,
@@ -157,7 +157,7 @@ class PreQN(RlAlgorithm):
                 valid *= (1 - samples_from_replay.timeout_n.float())
             self.q_optimizer.zero_grad()
             q, target_q, td, q_loss = self.q_loss(samples_from_replay, valid)
-            opt_info.qMean.append(q.mean())
+            opt_info.qMean.append(q.mean().item())
 
             # Compute K and Z
             d_q = []
