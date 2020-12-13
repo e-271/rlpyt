@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('--qhsize', type=int, nargs='+', default=[64,64])
     parser.add_argument('--qnonlin', type=str, default='relu')
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--qtarget', type=bool, default=None)
+    parser.add_argument('--qtarget', action='store_true', default=False, help='use target q networks')
     args = parser.parse_args()
     build_and_train(
         env_id=args.env_id,
