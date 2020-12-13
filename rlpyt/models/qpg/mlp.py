@@ -6,14 +6,6 @@ from rlpyt.utils.tensor import infer_leading_dims, restore_leading_dims
 from rlpyt.models.mlp import MlpModel
 
 
-class Sine(torch.nn.Module):
-    def __init__(self, w0 = 1.):
-        super().__init__()
-        self.w0 = w0
-    def forward(self, x):
-        return torch.sin(self.w0 * x)
-
-
 class MuMlpModel(torch.nn.Module):
     """MLP neural net for action mean (mu) output for DDPG agent."""
     def __init__(
@@ -77,6 +69,7 @@ class QofMuMlpModel(torch.nn.Module):
             observation_shape,
             hidden_sizes,
             action_size,
+            nonlinearity=torch.nn.ReLU,
             ):
         """Instantiate neural net according to inputs."""
         super().__init__()
@@ -85,7 +78,7 @@ class QofMuMlpModel(torch.nn.Module):
             input_size=int(np.prod(observation_shape)) + action_size,
             hidden_sizes=hidden_sizes,
             output_size=1,
-            nonlinearity=Sine
+            nonlinearity=nonlinearity
         )
 
     def forward(self, observation, prev_action, prev_reward, action):

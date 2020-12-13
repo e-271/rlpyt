@@ -16,7 +16,7 @@ import scipy.linalg
 import numpy as np
 
 OptInfo = namedtuple("OptInfo",
-    ["muLoss", "qLoss", "qMean", "cosSim", "muGradNorm", "qGradNorm"])
+    ["muLoss", "qLoss", "qMean", "cosSim", "cosSim1", "cosSim2", "cosSim3", "muGradNorm", "qGradNorm"])
 SamplesToBuffer = namedarraytuple("SamplesToBuffer",
     ["observation", "action", "reward", "done", "timeout"])
 
@@ -48,6 +48,7 @@ class PreQN(RlAlgorithm):
             updates_per_sync=1,  # For async mode only.
             bootstrap_timelimit=True,
             ReplayBufferCls=None,
+            target=False,
             ):
         """Saves input arguments."""
         if optim_kwargs is None:
@@ -208,12 +209,15 @@ class PreQN(RlAlgorithm):
                 opt_info.cosSim.append(cos.item())
 
                 # Only accept update if Q' - Q is well aligned with TQ - Q (measured by cosine similarity)
-                """for alpha in range(4):
+                for alpha in range(4):
                     for p, old_p in zip(self.agent.q_parameters(), old_parameters):
                         p = np.exp(-alpha) * p + (1 - np.exp(-alpha)) * old_p
                     new_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
                     cos = torch.dot(new_q - old_q, td) / (torch.norm(new_q - old_q) * torch.norm(td))
-                    if cos > 0.95: break"""
+                    if alpha == 1: opt_info.cosSim1.append(cos.item())
+                    if alpha == 2: opt_info.cosSim2.append(cos.item())
+                    if alpha == 3: opt_info.cosSim3.append(cos.item())
+                    if cos > 0.95: break
 
             opt_info.qLoss.append(q_loss.item())
             opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
@@ -253,7 +257,8 @@ class PreQN(RlAlgorithm):
         samples have leading batch dimension [B,..] (but not time)."""
         q = self.agent.q(*samples.agent_inputs, samples.action)
         with torch.no_grad():
-            target_q = self.agent.q_at_mu(*samples.target_inputs)
+            if not self.target: target_q = self.agent.q_at_mu(*samples.target_inputs)
+            else: target_q = self.agent.target_q_at_mu(*samples.target_inputs)
         disc = self.discount ** self.n_step_return
         y = samples.return_ + (1 - samples.done_n.float()) * disc * target_q
         y = torch.clamp(y, -self.q_target_clip, self.q_target_clip)

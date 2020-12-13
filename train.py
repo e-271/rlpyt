@@ -19,10 +19,12 @@ from rlpyt.agents.qpg.ddpg_agent import DdpgAgent
 from rlpyt.agents.qpg.preqn_agent import PreqnAgent
 from rlpyt.runners.minibatch_rl import MinibatchRlEval
 from rlpyt.utils.logging.context import logger_context
+from rlpyt.models.mlp import Sine, Linear
 from rlpyt.utils.seed import set_seed
+import torch
 
 
-def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None, seed=42):
+def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg', run_ID=0, cuda_idx=None, seed=42, q_hidden_sizes=[400,300], q_nonlinearity='relu', batch_size=64, q_target=None):
     set_seed(seed)
     sampler = SerialSampler(
         EnvCls=gym_make,
@@ -35,12 +37,21 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
         eval_max_steps=int(51e3),
         eval_max_trajectories=50,
     )
+    if q_nonlinearity == 'relu': q_nonlin = torch.nn.ReLU
+    if q_nonlinearity == 'sine': q_nonlin = Sine
+    if q_nonlinearity == 'linear': q_nonlin = Linear
     if alg_name.lower() == 'ddpg':
-        algo = DDPG()  # Run with defaults.
-        agent = DdpgAgent()
+        if q_target is None: q_target = True
+        algo = DDPG(batch_size=batch_size,
+                    target=q_target)
+        agent = DdpgAgent(q_hidden_sizes=q_hidden_sizes, 
+                           q_nonlinearity=q_nonlin)
     elif alg_name.lower() == 'preqn':
-        algo = PreQN()  # Run with defaults.
-        agent = PreqnAgent()
+        if q_target is None: q_target = False
+        algo = PreQN(batch_size=batch_size,
+                    target=q_target)
+        agent = PreqnAgent(q_hidden_sizes=q_hidden_sizes, 
+                           q_nonlinearity=q_nonlin)
     runner = MinibatchRlEval(
         algo=algo,
         agent=agent,
@@ -53,6 +64,10 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
     config = dict(env_id=env_id)
     log_dir = os.path.join(log_dir, env_id)
     log_dir = os.path.join(log_dir, alg_name.lower())
+    log_dir += '-' + q_nonlinearity
+    log_dir += '-hs' + str(q_hidden_sizes)
+    log_dir += '-qt' + str(q_target)
+    log_dir += '-bs' + str(batch_size)
     name = '' #env_id
     with logger_context(log_dir, run_ID, name, config, override_prefix=True, use_summary_writer=True):
         runner.train()
@@ -61,11 +76,16 @@ def build_and_train(env_id="HalfCheetah-v3", log_dir='results', alg_name='ddpg',
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--env_id', help='environment ID', default='HalfCheetah-v3')
+    #parser.add_argument('--env_id', help='environment ID', default='HalfCheetah-v3')
+    parser.add_argument('--env_id', help='environment ID', default='Swimmer-v2')
     parser.add_argument('--alg_name', help='algorithm to run', default='ddpg')
     parser.add_argument('--log_dir', help='log directory', default='/mnt/slow_ssd/erobb/rlclass')
     parser.add_argument('--run_ID', help='run ID (logging)', type=int, default=0)
     parser.add_argument('--cuda_idx', help='gpu to use ', type=int, default=None)
+    parser.add_argument('--qhsize', type=int, nargs='+', default=[400,300])
+    parser.add_argument('--qnonlin', type=str, default='relu')
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--qtarget', type=bool, default=None)
     args = parser.parse_args()
     build_and_train(
         env_id=args.env_id,
@@ -73,4 +93,8 @@ if __name__ == "__main__":
         alg_name=args.alg_name,
         run_ID=args.run_ID,
         cuda_idx=args.cuda_idx,
+        q_hidden_sizes=args.qhsize,
+        q_nonlinearity=args.qnonlin,
+        batch_size=args.batch_size,
+        q_target=args.qtarget,
     )

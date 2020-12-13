@@ -9,12 +9,12 @@ from rlpyt.distributions.gaussian import Gaussian, DistInfo
 from rlpyt.utils.buffer import buffer_to
 from rlpyt.utils.logging import logger
 from rlpyt.models.qpg.mlp import MuMlpModel, QofMuMlpModel
+from rlpyt.models.mlp import Sine
 from rlpyt.models.utils import update_state_dict
 from rlpyt.utils.collections import namedarraytuple
 
 
 AgentInfo = namedarraytuple("AgentInfo", ["mu"])
-
 
 class PreqnAgent(BaseAgent):
     """Agent for deep deterministic policy gradient algorithm."""
@@ -31,12 +31,16 @@ class PreqnAgent(BaseAgent):
             initial_q_model_state_dict=None,
             action_std=0.1,
             action_noise_clip=None,
+            hidden_sizes=[400, 300],
+            q_hidden_sizes=[400, 300],
+            q_nonlinearity=Sine,
             ):
         """Saves input arguments; default network sizes saved here."""
         if model_kwargs is None:
-            model_kwargs = dict(hidden_sizes=[64, 64])
+            model_kwargs = dict(hidden_sizes=hidden_sizes)
         if q_model_kwargs is None:
-            q_model_kwargs = dict(hidden_sizes=[])
+            q_model_kwargs = dict(hidden_sizes=q_hidden_sizes, 
+                                  nonlinearity=q_nonlinearity)
         save__init__args(locals())
         super().__init__()  # For async setup.
 

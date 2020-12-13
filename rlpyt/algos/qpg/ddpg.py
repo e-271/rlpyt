@@ -14,7 +14,7 @@ from rlpyt.utils.tensor import valid_mean
 from rlpyt.algos.utils import valid_from_done
 
 OptInfo = namedtuple("OptInfo",
-    ["muLoss", "qLoss", "muGradNorm", "qGradNorm"])
+    ["muLoss", "qLoss", "cosSim", "muGradNorm", "qGradNorm"])
 SamplesToBuffer = namedarraytuple("SamplesToBuffer",
     ["observation", "action", "reward", "done", "timeout"])
 
@@ -46,6 +46,7 @@ class DDPG(RlAlgorithm):
             updates_per_sync=1,  # For async mode only.
             bootstrap_timelimit=True,
             ReplayBufferCls=None,
+            target=True
             ):
         """Saves input arguments."""
         if optim_kwargs is None:
@@ -153,11 +154,15 @@ class DDPG(RlAlgorithm):
                 # time-limit, turn off training on these samples.
                 valid *= (1 - samples_from_replay.timeout_n.float())
             self.q_optimizer.zero_grad()
-            q_loss = self.q_loss(samples_from_replay, valid)
+            q_loss, td = self.q_loss(samples_from_replay, valid)
             q_loss.backward()
             q_grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.agent.q_parameters(), self.clip_grad_norm)
+            old_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
             self.q_optimizer.step()
+            new_q = self.agent.q_model(*samples_from_replay.agent_inputs, samples_from_replay.action)
+            cos = torch.dot(new_q - old_q, td) / (torch.norm(new_q - old_q) * torch.norm(td))
+            opt_info.cosSim.append(cos.item())
             opt_info.qLoss.append(q_loss.item())
             opt_info.qGradNorm.append(torch.tensor(q_grad_norm).item())  # backwards compatible
             self.update_counter += 1
@@ -196,13 +201,14 @@ class DDPG(RlAlgorithm):
         samples have leading batch dimension [B,..] (but not time)."""
         q = self.agent.q(*samples.agent_inputs, samples.action)
         with torch.no_grad():
-            target_q = self.agent.target_q_at_mu(*samples.target_inputs)
+            if not self.target: target_q = self.agent.q_at_mu(*samples.target_inputs)
+            else: target_q = self.agent.target_q_at_mu(*samples.target_inputs)
         disc = self.discount ** self.n_step_return
         y = samples.return_ + (1 - samples.done_n.float()) * disc * target_q
         y = torch.clamp(y, -self.q_target_clip, self.q_target_clip)
         q_losses = 0.5 * (y - q) ** 2
         q_loss = valid_mean(q_losses, valid)  # valid can be None.
-        return q_loss
+        return q_loss, y-q
 
     def optim_state_dict(self):
         return dict(q=self.q_optimizer.state_dict(),

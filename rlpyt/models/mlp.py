@@ -1,6 +1,22 @@
 
 import torch
 
+# Sine nonlinearity
+class Sine(torch.nn.Module):
+    def __init__(self, w0 = 1.):
+        super().__init__()
+        self.w0 = w0
+    def forward(self, x):
+        return torch.sin(self.w0 * x)
+
+
+# No nonlinearity
+class Linear(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, x):
+        return x
+
 
 class MlpModel(torch.nn.Module):
     """Multilayer Perceptron with last layer linear.
@@ -31,7 +47,7 @@ class MlpModel(torch.nn.Module):
             sequence.extend([layer, nonlinearity()])
         if output_size is not None:
             last_size = hidden_sizes[-1] if hidden_sizes else input_size
-            sequence.append(torch.nn.Linear(last_size, output_size, bias=False))
+            sequence.append(torch.nn.Linear(last_size, output_size))
         self.model = torch.nn.Sequential(*sequence)
         self._output_size = (hidden_sizes[-1] if output_size is None
             else output_size)
